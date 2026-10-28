@@ -1,14 +1,44 @@
 import { messages } from '../core/messages.js';
+import { containsTerm, normalizeText } from '../core/text.js';
 import { WaterfallDialog } from '../dialogs/WaterfallDialog.js';
-import { normalizeText } from '../core/text.js';
+
+const ORDINALS = [
+  ['primeira', 'primeiro'],
+  ['segunda', 'segundo'],
+  ['terceira', 'terceiro'],
+];
+
+function chosenIndex(normalized, count) {
+  const numbered = normalized.match(/^(?:opcao|numero|n|a|o)?\s*(\d)$/);
+  if (numbered) {
+    const index = Number(numbered[1]) - 1;
+    if (index >= 0 && index < count) return index;
+  }
+
+  const ordinal = ORDINALS.findIndex((words) => words.some((word) => containsTerm(normalized, word)));
+  if (ordinal >= 0 && ordinal < count && normalized.split(' ').length <= 3) {
+    return ordinal;
+  }
+  return -1;
+}
 
 function chooseCandidate(candidates, raw) {
   const normalized = normalizeText(raw);
-  const asNumber = Number.parseInt(normalized, 10);
-  if (String(asNumber) === normalized && candidates[asNumber - 1]) {
-    return candidates[asNumber - 1];
+  const index = chosenIndex(normalized, candidates.length);
+  if (index >= 0) return candidates[index];
+
+  let best = null;
+  let bestHits = 0;
+  for (const candidate of candidates) {
+    const label = normalizeText(candidate.label);
+    const terms = [...(candidate.matchTerms || []), label].filter((term) => term.length >= 4);
+    const hits = terms.filter((term) => term === normalized || containsTerm(normalized, term) || (normalized.length >= 4 && label.includes(normalized))).length;
+    if (hits > bestHits) {
+      best = candidate;
+      bestHits = hits;
+    }
   }
-  return candidates.find((candidate) => normalizeText(candidate.label) === normalized);
+  return best;
 }
 
 export function createHelpDialog() {
@@ -30,7 +60,7 @@ export function createAmbiguityResolverDialog() {
         return step.prompt([
           'Encontrei mais de uma possibilidade. Você quis dizer:',
           ...lines,
-          'Responda com o número ou o nome da opção.',
+          'Responda com o número, com "a primeira" ou com o nome da opção.',
         ].join('\n'));
       }
 

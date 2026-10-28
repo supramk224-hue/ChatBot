@@ -42,25 +42,40 @@ async function askSlot(step, config) {
   return step.next(stored);
 }
 
+function looksLikeConsult(text) {
+  const value = normalizeText(text);
+  return Boolean(value) && (/\bstatus\b/.test(value) || value.startsWith('consultar') || value === 'consulta');
+}
+
+function looksLikeOpen(text) {
+  const value = normalizeText(text);
+  return Boolean(value) && (/abrir\s+(um\s+)?chamado/.test(value) || value === 'novo chamado' || value === 'suporte');
+}
+
+async function listTickets(step) {
+  const tickets = step.context.turnState.get('userProfile')?.tickets || [];
+  if (tickets.length === 0) {
+    await step.context.sendActivity('Você ainda não tem chamados registrados.');
+    return step.endDialog({ consulted: false });
+  }
+  const lines = tickets.map((ticket) => `${ticket.id}: ${ticket.subject} (${ticket.status}, prioridade ${priorityLabel(ticket.priority)})`);
+  await step.context.sendActivity(`Seus chamados:\n${lines.join('\n')}`);
+  return step.endDialog({ consulted: true });
+}
+
 export function createSupportTicketDialog() {
   return new WaterfallDialog('supportTicket', [
     async (step) => {
       if (step.reason !== 'input') {
+        if (looksLikeConsult(step.options?.text)) return listTickets(step);
+        if (looksLikeOpen(step.options?.text)) return step.next('open');
         step.values.modeAttempts = 0;
         return step.prompt('O que você precisa?\n1. Abrir um chamado\n2. Consultar um chamado');
       }
 
       const choice = normalizeText(step.result);
-      const profile = step.context.turnState.get('userProfile');
-      if (choice === '2' || choice === 'consultar' || choice === 'consulta' || choice === 'status' || choice.startsWith('consultar')) {
-        const tickets = profile?.tickets || [];
-        if (tickets.length === 0) {
-          await step.context.sendActivity('Você ainda não tem chamados registrados.');
-          return step.endDialog({ consulted: false });
-        }
-        const lines = tickets.map((ticket) => `${ticket.id}: ${ticket.subject} (${ticket.status}, prioridade ${priorityLabel(ticket.priority)})`);
-        await step.context.sendActivity(`Seus chamados:\n${lines.join('\n')}`);
-        return step.endDialog({ consulted: true });
+      if (choice === '2' || choice === 'consultar' || choice === 'consulta' || choice === 'status' || choice.startsWith('consultar') || looksLikeConsult(step.result)) {
+        return listTickets(step);
       }
 
       if (choice === '1' || choice === 'abrir' || choice === 'novo' || choice.startsWith('abrir')) {

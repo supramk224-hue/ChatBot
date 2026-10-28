@@ -64,6 +64,9 @@ export class IntentRecognizer {
       exact,
       patterns: regexes,
       keywords: extra.keywords || [],
+      strong: extra.strong || [],
+      weak: extra.weak || [],
+      matchTerms: extra.matchTerms || [],
     });
   }
 
@@ -75,9 +78,12 @@ export class IntentRecognizer {
       .filter((intent) => intent.score > 0)
       .sort((left, right) => right.score - left.score);
 
-    const top = ranked[0] ?? null;
-    const second = ranked[1] ?? null;
-    const candidates = ranked.filter((intent) => intent.score >= 0.45).slice(0, 3);
+    const social = new Set(['greeting', 'help', 'menu']);
+    const business = ranked.filter((intent) => !social.has(intent.name));
+    const pool = business.some((intent) => intent.score >= 0.7) ? business : ranked;
+    const top = pool[0] ?? null;
+    const second = pool[1] ?? null;
+    const candidates = pool.filter((intent) => intent.score >= 0.45).slice(0, 3);
     const ambiguous = Boolean(
       top
       && second
@@ -109,11 +115,22 @@ export class IntentRecognizer {
       score = Math.max(score, 0.92);
     }
 
-    const terms = (intent.keywords || []).map((keyword) => normalizeText(keyword)).filter(Boolean);
-    const matched = terms.filter((term) => containsTerm(normalized, term));
-    if (matched.length > 0) {
-      const keywordScore = Math.min(0.95, 0.5 + (matched.length / terms.length) * 0.45);
-      score = Math.max(score, keywordScore);
+    const weighted = new Map();
+    for (const term of intent.strong || []) weighted.set(normalizeText(term), 0.86);
+    for (const term of intent.keywords || []) {
+      const key = normalizeText(term);
+      if (!weighted.has(key)) weighted.set(key, 0.78);
+    }
+    for (const term of intent.weak || []) {
+      const key = normalizeText(term);
+      if (!weighted.has(key)) weighted.set(key, 0.6);
+    }
+
+    const hits = [...weighted.entries()].filter(([term]) => term && containsTerm(normalized, term));
+    if (hits.length > 0) {
+      const best = Math.max(...hits.map(([, weight]) => weight));
+      const keywordScore = Math.min(0.95, best + (hits.length - 1) * 0.05);
+      score = Math.max(score, roundScore(keywordScore));
     }
 
     return {
@@ -122,53 +139,87 @@ export class IntentRecognizer {
       dialogId: intent.dialogId,
       score: roundScore(score),
       entities,
+      matchTerms: (intent.matchTerms || []).map((term) => normalizeText(term)),
     };
   }
 }
 
 export function createEnterpriseRecognizer() {
   const recognizer = new IntentRecognizer();
-  recognizer.hears(['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hey', 'hello'], 'greeting', {
+  recognizer.hears(['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hey', 'hello', 'e ai', 'opa'], 'greeting', {
     dialogId: 'onboarding',
     label: 'Começar atendimento',
-    keywords: ['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite'],
+    strong: ['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'e ai', 'opa'],
+    matchTerms: ['oi', 'ola', 'saudacao'],
   });
   recognizer.hears(
-    ['abrir chamado', 'novo chamado', 'suporte', 'consultar chamado', 'status do chamado', /abrir\s+(um\s+)?chamado/, /consultar\s+(o\s+)?chamado/, /status\s+do\s+chamado/],
+    [
+      'abrir chamado',
+      'novo chamado',
+      'suporte',
+      'consultar chamado',
+      'status do chamado',
+      /abrir\s+(um\s+)?chamado/,
+      /consultar\s+(o\s+|meu\s+)?chamado/,
+      /status\s+do\s+(meu\s+)?chamado/,
+    ],
     'support',
     {
       dialogId: 'supportTicket',
       label: 'Abrir ou consultar chamado',
-      keywords: ['chamado', 'suporte', 'ticket', 'problema', 'erro', 'consultar'],
+      strong: ['suporte', 'ticket'],
+      weak: ['chamado', 'problema', 'erro', 'consultar'],
+      matchTerms: ['chamado', 'suporte', 'ticket'],
     },
   );
   recognizer.hears(
-    ['fatura', 'cobranca', 'boleto', 'pagamento', /duvida\s+de\s+cobranca/, /segunda\s+via/],
+    [
+      'fatura',
+      'cobranca',
+      'boleto',
+      'pagamento',
+      /duvida\s+de\s+cobranca/,
+      /segunda\s+via/,
+      /(fatura|boleto|cobranca).{0,30}(errad|duplicad|duas vezes|indevid)/,
+      /(errad|duplicad|duas vezes|indevid).{0,30}(fatura|boleto|cobranca)/,
+    ],
     'billing',
     {
       dialogId: 'billingInquiry',
       label: 'Dúvida de cobrança',
-      keywords: ['fatura', 'cobranca', 'boleto', 'pagamento', 'chamado'],
+      strong: ['fatura', 'cobranca', 'boleto', 'pagamento', 'segunda via'],
+      weak: ['chamado'],
+      matchTerms: ['cobranca', 'fatura', 'boleto', 'pagamento'],
     },
   );
   recognizer.hears(
-    ['atendente', 'humano', 'falar com atendente', 'falar com humano', /falar\s+com\s+(um\s+)?(atendente|humano|operador)/],
+    [
+      'atendente',
+      'humano',
+      'falar com atendente',
+      'falar com humano',
+      /falar\s+com\s+(um\s+|uma\s+)?(atendente|humano|pessoa|operador)/,
+      /(passa|passar|transferir)\s+(pra|para)\s+(um\s+|uma\s+)?(atendente|humano|pessoa)/,
+    ],
     'humanHandoff',
     {
       dialogId: 'humanHandoff',
       label: 'Falar com atendente',
-      keywords: ['atendente', 'humano', 'operador'],
+      strong: ['atendente', 'humano', 'operador'],
+      matchTerms: ['atendente', 'humano', 'pessoa'],
     },
   );
   recognizer.hears(['menu', 'opcoes', 'inicio'], 'menu', {
     dialogId: 'mainMenu',
     label: 'Menu principal',
-    keywords: ['menu', 'opcoes'],
+    strong: ['menu', 'opcoes', 'inicio'],
+    matchTerms: ['menu', 'opcoes'],
   });
   recognizer.hears(['ajuda', 'help', 'comandos'], 'help', {
     dialogId: 'help',
     label: 'Ajuda',
-    keywords: ['ajuda', 'help'],
+    strong: ['ajuda', 'help', 'comandos'],
+    matchTerms: ['ajuda', 'help'],
   });
   return recognizer;
 }

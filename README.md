@@ -50,6 +50,8 @@ onboarding
             └─ help (interrupção que volta ao mesmo passo)
 ```
 
+A desambiguação olha a frase em português, não só a palavra isolada. "Minha fatura veio errada" segue para cobrança. "Bom dia, minha fatura veio errada" também, porque a saudação não compete com o pedido. "Preciso abrir um chamado da cobrança" pergunta se a pessoa quis dizer chamado ou cobrança, e aceita "1", "a primeira" ou "cobrança". "Quero falar com uma pessoa", "cancela isso" e "pode registrar" entram como fala natural. Os cenários da loja Aurora estão em `tests/step6_portuguese_scenarios.test.js`.
+
 Entrada ambígua, como "chamado" entre suporte e cobrança, abre um subdiálogo de escolha antes de qualquer ação. Operações que gravam chamado ou transferem para um humano pedem confirmação explícita. Três falhas seguidas de validação, ou três mensagens não compreendidas, escalam para o transbordo.
 
 ## Testes

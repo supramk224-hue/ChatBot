@@ -18,18 +18,27 @@ export function containsTerm(normalized, term) {
 }
 
 export function isYes(text) {
-  return ['sim', 's', 'confirmo', 'confirmar', 'yes', 'ok'].includes(normalizeText(text));
+  const value = normalizeText(text);
+  return [
+    'sim', 's', 'confirmo', 'confirmar', 'confirma', 'yes', 'ok',
+    'pode ser', 'pode registrar', 'pode abrir', 'pode sim',
+    'isso', 'isso mesmo', 'claro', 'positivo', 'fechado',
+  ].includes(value);
 }
 
 export function isNo(text) {
-  return ['nao', 'n', 'no'].includes(normalizeText(text));
+  const value = normalizeText(text);
+  return [
+    'nao', 'n', 'no', 'negativo', 'melhor nao', 'nao quero',
+    'nao confirma', 'deixa quieto', 'prefiro nao',
+  ].includes(value);
 }
 
 export function normalizePriority(text) {
   const value = normalizeText(text);
-  if (['1', 'baixa', 'baixo'].includes(value)) return 'baixa';
-  if (['2', 'media', 'medio'].includes(value)) return 'media';
-  if (['3', 'alta', 'alto', 'urgente'].includes(value)) return 'alta';
+  if (value === '1' || /\b(baixa|baixo)\b/.test(value)) return 'baixa';
+  if (value === '2' || /\b(media|medio)\b/.test(value)) return 'media';
+  if (value === '3' || /\b(alta|alto|urgente|urgentissimo)\b/.test(value)) return 'alta';
   return null;
 }
 

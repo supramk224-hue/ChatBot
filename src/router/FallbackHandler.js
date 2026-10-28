@@ -1,17 +1,35 @@
 import { messages } from '../core/messages.js';
 import { normalizeText } from '../core/text.js';
 
-const INTERRUPTS = [
-  { name: 'cancel', phrases: ['cancelar', 'cancela', 'abortar'] },
-  { name: 'back', phrases: ['voltar', 'volta'] },
-  { name: 'menu', phrases: ['menu', 'opcoes'] },
-  { name: 'help', phrases: ['ajuda', 'help', 'comandos'] },
-  { name: 'human', phrases: ['atendente', 'falar com atendente', 'falar com humano', 'transbordo'] },
+const INTERRUPT_RULES = [
+  {
+    name: 'human',
+    test: (text) => /^(atendente|humano|operador|transbordo)$/.test(text)
+      || /falar\s+com\s+(um\s+|uma\s+|o\s+|a\s+)?(atendente|humano|pessoa|gente|operador)/.test(text)
+      || /(passa|passar|transferir|transfere)\s+(pra|para)\s+(um\s+|uma\s+)?(atendente|humano|pessoa)/.test(text)
+      || /atendimento\s+humano/.test(text),
+  },
+  {
+    name: 'cancel',
+    test: (text) => /^(por favor\s+)?(quero\s+|pode\s+|podia\s+)?cancel(ar|a)(\s+isso|\s+o fluxo|\s+este fluxo)?$/.test(text)
+      || text === 'abortar',
+  },
+  {
+    name: 'back',
+    test: (text) => /^(voltar|volta)(\s+atras|\s+ao menu|\s+pro menu|\s+para o menu)?$/.test(text)
+      || text === 'passo anterior',
+  },
+  {
+    name: 'menu',
+    test: (text) => /^(quero\s+|ir\s+para\s+|ir\s+pro\s+)?(o\s+)?menu(\s+principal)?$/.test(text)
+      || text === 'opcoes'
+      || text === 'inicio',
+  },
+  {
+    name: 'help',
+    test: (text) => /^(me ajuda|pode me ajudar|preciso de ajuda|ajuda|help|comandos)(\s+por favor)?$/.test(text),
+  },
 ];
-
-const ORDERED_INTERRUPTS = INTERRUPTS
-  .flatMap((item) => item.phrases.map((phrase) => ({ name: item.name, phrase: normalizeText(phrase) })))
-  .sort((left, right) => right.phrase.length - left.phrase.length);
 
 export class FallbackHandler {
   constructor({ maxFailures = 3 } = {}) {
@@ -20,7 +38,7 @@ export class FallbackHandler {
 
   matchInterrupt(text) {
     const normalized = normalizeText(text);
-    const found = ORDERED_INTERRUPTS.find((item) => item.phrase === normalized);
+    const found = INTERRUPT_RULES.find((rule) => rule.test(normalized));
     return found ? { name: found.name } : null;
   }
 

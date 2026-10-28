@@ -17,7 +17,9 @@ export function createOnboardingDialog() {
         return step.prompt('Olá! Eu sou o assistente enterprise. Como você gostaria de ser chamado?');
       }
 
-      const name = String(step.result ?? '').trim();
+      const rawName = String(step.result ?? '').trim();
+      const introduced = rawName.match(/^(?:meu nome é|meu nome e|me chamo|pode me chamar de|eu sou)\s+(.+)$/i);
+      const name = (introduced ? introduced[1] : rawName).replace(/[.!?]+$/g, '').trim();
       if (name.length < 2 || name.length > 80) {
         return step.prompt('Informe um nome com pelo menos 2 caracteres.');
       }
@@ -49,17 +51,36 @@ export function createMainMenuDialog() {
       }
 
       const choice = normalizeText(step.result);
-      if (choice === '1' || choice === 'chamado' || choice === 'suporte' || choice.includes('chamado')) {
+      if (choice === '1' || choice === 'suporte') {
         return step.beginDialog('supportTicket');
       }
-      if (choice === '2' || choice === 'atendente' || choice === 'humano' || choice.includes('atendente')) {
+      if (choice === '2' || choice === 'atendente' || choice === 'humano') {
         return step.beginDialog('humanHandoff', { reason: 'menu' });
       }
-      if (['3', 'sair', 'encerrar'].includes(choice)) {
+      if (['3', 'sair', 'encerrar', 'tchau', 'ate logo'].includes(choice)) {
         await step.context.sendActivity('Até logo. Quando quiser, envie uma mensagem para recomeçar.');
         return step.endDialog({ action: 'exit' });
       }
-      return step.prompt('Não reconheci a opção. Responda 1, 2 ou 3.');
+
+      const recognition = step.context.turnState.get('recognizer')?.recognize(step.result);
+      if (recognition?.ambiguous) {
+        return step.beginDialog('ambiguity', {
+          candidates: recognition.candidates,
+          originalText: step.result,
+        });
+      }
+      if (recognition?.topIntent && recognition.topIntent.score >= 0.75 && recognition.topIntent.dialogId !== 'mainMenu') {
+        if (recognition.topIntent.dialogId === 'onboarding') {
+          return step.prompt('Você já está no menu. Responda 1, 2 ou 3, ou descreva o que precisa.');
+        }
+        return step.beginDialog(recognition.topIntent.dialogId, {
+          intent: recognition.topIntent.name,
+          text: step.result,
+          entities: recognition.topIntent.entities || [],
+          category: recognition.topIntent.name,
+        });
+      }
+      return step.prompt('Não reconheci a opção. Responda 1, 2 ou 3, ou descreva o problema com suas palavras.');
     },
     async (step) => step.replaceDialog('mainMenu', step.options),
   ]);
